@@ -3,7 +3,9 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const admin = require('./admin');
+if (!admin.name) admin.name = 'Администратор';
 
+const APP_VERSION = 4; // фронтенд сверяет версию и предупреждает, если сервер не обновили
 const app = express();
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '10kb' }));
@@ -13,7 +15,7 @@ const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
 const DATA_DIR = path.join(__dirname, 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 
-if (PROD && admin.password === 'change-me-please') {
+if (PROD && admin.password === 'admin') {
   console.warn('ВНИМАНИЕ: задайте ADMIN_PASSWORD в переменных окружения.');
 }
 
@@ -145,15 +147,52 @@ function needAdmin(req, res, next) {
   next();
 }
 
+// имя администратора можно сменить в настройках; хранится в data/settings.json
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+function loadSettings() {
+  try { return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')); }
+  catch { return {}; }
+}
+function saveSettings(o) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(o, null, 2));
+}
+function adminName() { return loadSettings().adminName || admin.name; }
+
+function nameOf(login) {
+  if (login === admin.login) return adminName();
+  const u = loadUsers().find((x) => x.login === login);
+  return (u && u.name) || login;
+}
+function nameTaken(name, exceptLogin) {
+  const n = name.toLowerCase();
+  if (exceptLogin !== admin.login && adminName().toLowerCase() === n) return true;
+  return loadUsers().some((u) => u.login !== exceptLogin && String(u.name || u.login).toLowerCase() === n);
+}
+function readName(raw) {
+  const name = String(raw || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+  return name.length >= 2 ? name : null;
+}
+
+app.post('/api/admin-name', needAuth, needAdmin, (req, res) => {
+  const nm = readName(req.body.name);
+  if (!nm) return res.status(400).json({ error: 'Имя: минимум 2 символа' });
+  if (nameTaken(nm, admin.login)) return res.status(409).json({ error: 'Мастер с таким именем уже есть' });
+  const st = loadSettings();
+  st.adminName = nm;
+  saveSettings(st);
+  res.json({ ok: true, name: nm });
+});
+
 app.get('/api/me', needAuth, (req, res) => {
-  res.json({ login: req.session.login, role: req.session.role });
+  res.json({ login: req.session.login, role: req.session.role, name: nameOf(req.session.login), version: APP_VERSION });
 });
 
 /* ---------- управление аккаунтами (только администратор) ---------- */
 const LOGIN_RE = /^[a-z0-9_.+@-]{3,32}$/;
 
 app.get('/api/users', needAuth, needAdmin, (req, res) => {
-  res.json(loadUsers().map((u) => ({ login: u.login, blocked: !!u.blocked })));
+  res.json(loadUsers().map((u) => ({ login: u.login, name: u.name || '', blocked: !!u.blocked })));
 });
 
 app.post('/api/users', needAuth, needAdmin, (req, res) => {
@@ -161,11 +200,14 @@ app.post('/api/users', needAuth, needAdmin, (req, res) => {
   const password = String(req.body.password || '');
   if (!LOGIN_RE.test(login)) return res.status(400).json({ error: 'Логин: 3–32 символа, латиница, цифры, + @ _ . -' });
   if (password.length < 6) return res.status(400).json({ error: 'Пароль: минимум 6 символов' });
+  const name = readName(req.body.name);
+  if (!name) return res.status(400).json({ error: 'Введите имя мастера (минимум 2 символа)' });
+  if (nameTaken(name, null)) return res.status(409).json({ error: 'Мастер с таким именем уже есть' });
   const list = loadUsers();
   if (login === admin.login || list.some((u) => u.login === login)) {
     return res.status(409).json({ error: 'Такой логин уже есть' });
   }
-  list.push({ login, hash: hashPassword(password), blocked: false });
+  list.push({ login, name, hash: hashPassword(password), blocked: false });
   saveUsers(list);
   res.json({ ok: true });
 });
@@ -179,6 +221,12 @@ app.patch('/api/users/:login', needAuth, needAdmin, (req, res) => {
     if (pw.length < 6) return res.status(400).json({ error: 'Пароль: минимум 6 символов' });
     user.hash = hashPassword(pw);
     dropSessionsOf(user.login);
+  }
+  if (req.body.name !== undefined) {
+    const nm = readName(req.body.name);
+    if (!nm) return res.status(400).json({ error: 'Имя мастера: минимум 2 символа' });
+    if (nameTaken(nm, user.login)) return res.status(409).json({ error: 'Мастер с таким именем уже есть' });
+    user.name = nm;
   }
   if (req.body.blocked !== undefined) {
     user.blocked = !!req.body.blocked;
@@ -213,8 +261,8 @@ function toMin(t) { const [h, m] = t.split(':'); return +h * 60 + +m; }
 
 // мастера: администратор и все незаблокированные сотрудники
 app.get('/api/masters', needAuth, (req, res) => {
-  const list = loadUsers().filter((u) => !u.blocked).map((u) => u.login);
-  res.json([admin.login, ...list]);
+  const list = loadUsers().filter((u) => !u.blocked).map((u) => ({ login: u.login, name: u.name || u.login }));
+  res.json([{ login: admin.login, name: adminName() }, ...list]);
 });
 
 function readAppt(body, masters) {
@@ -237,10 +285,15 @@ function readAppt(body, masters) {
   if (toMin(a.time) + a.duration > 24 * 60) return { error: 'Запись не должна уходить за полночь' };
   return { a };
 }
-function hasOverlap(list, a, skipId) {
+function findOverlap(list, a, skipId) {
   const s = toMin(a.time), e = s + a.duration;
-  return list.some((x) => x.id !== skipId && x.master === a.master && x.date === a.date &&
-    toMin(x.time) < e && s < toMin(x.time) + x.duration);
+  return list.find((x) => x.id !== skipId && x.master === a.master && x.date === a.date &&
+    toMin(x.time) < e && s < toMin(x.time) + x.duration) || null;
+}
+function pad2(n) { return String(n).padStart(2, '0'); }
+function busyMsg(x) {
+  const e = toMin(x.time) + x.duration;
+  return 'Время занято: ' + x.client + ', ' + x.time + '–' + pad2(Math.floor(e / 60) % 24) + ':' + pad2(e % 60);
 }
 function allMasters() { return [admin.login, ...loadUsers().filter((u) => !u.blocked).map((u) => u.login)]; }
 
@@ -254,7 +307,8 @@ app.post('/api/appointments', needAuth, (req, res) => {
   const r = readAppt(req.body, allMasters());
   if (r.error) return res.status(400).json({ error: r.error });
   const list = loadAppts();
-  if (hasOverlap(list, r.a, null)) return res.status(409).json({ error: 'У этого мастера уже есть запись на это время' });
+  const c1 = findOverlap(list, r.a, null);
+  if (c1) return res.status(409).json({ error: busyMsg(c1) });
   const item = { id: crypto.randomBytes(6).toString('hex'), ...r.a, createdBy: req.session.login };
   list.push(item);
   saveAppts(list);
@@ -267,7 +321,8 @@ app.put('/api/appointments/:id', needAuth, (req, res) => {
   if (i < 0) return res.status(404).json({ error: 'Запись не найдена' });
   const r = readAppt(req.body, allMasters());
   if (r.error) return res.status(400).json({ error: r.error });
-  if (hasOverlap(list, r.a, req.params.id)) return res.status(409).json({ error: 'У этого мастера уже есть запись на это время' });
+  const c2 = findOverlap(list, r.a, req.params.id);
+  if (c2) return res.status(409).json({ error: busyMsg(c2) });
   list[i] = { ...list[i], ...r.a };
   saveAppts(list);
   res.json(list[i]);
@@ -281,8 +336,35 @@ app.delete('/api/appointments/:id', needAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- клиенты ---------- */
+const CLIENTS_FILE = path.join(DATA_DIR, 'clients.json');
+function loadClients() {
+  try { return JSON.parse(fs.readFileSync(CLIENTS_FILE, 'utf8')); }
+  catch { return []; }
+}
+function saveClients(list) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(CLIENTS_FILE, JSON.stringify(list, null, 2));
+}
+app.get('/api/clients', needAuth, (req, res) => res.json(loadClients()));
+app.post('/api/clients', needAuth, (req, res) => {
+  const name = String(req.body.name || '').trim().slice(0, 80);
+  const phone = String(req.body.phone || '').trim().slice(0, 30);
+  if (!name) return res.status(400).json({ error: 'Введите имя клиента' });
+  const list = loadClients();
+  const digits = phone.replace(/\D/g, '');
+  if (digits && list.some((c) => String(c.phone || '').replace(/\D/g, '') === digits)) {
+    return res.status(409).json({ error: 'Клиент с таким телефоном уже есть' });
+  }
+  const item = { id: crypto.randomBytes(6).toString('hex'), name, phone };
+  list.push(item);
+  saveClients(list);
+  res.json(item);
+});
+
 /* ---------- страницы ---------- */
 app.get('/', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   const file = getSession(req) ? 'app.html' : 'login.html';
   res.sendFile(path.join(__dirname, 'views', file));
 });

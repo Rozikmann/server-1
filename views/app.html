@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Парикмахерская</title>
+<style>
+  :root { --bg:#f6f1fd; --card:#fff; --ink:#2b1d44; --muted:#6f6590; --brand:#6d2fc7; --line:#e3daf3; --error:#c0264b; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#1a1328; --card:#261d3d; --ink:#f3ecff; --muted:#b4a8d6; --brand:#8d52e6; --line:#43376a; --error:#ff7a98; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    padding: env(safe-area-inset-top,0px) 16px env(safe-area-inset-bottom,0px); }
+  .wrap { max-width: 520px; margin: 0 auto; padding: 16px 0 32px; }
+  header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+  h1 { font-size:22px; margin:0; }
+  h2 { font-size:18px; margin:0 0 12px; }
+  .who { color:var(--muted); font-size:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:16px; }
+  button { font:inherit; cursor:pointer; border-radius:10px; border:1px solid var(--line); background:transparent; color:var(--ink); padding:8px 12px; }
+  button.primary { background:var(--brand); border-color:var(--brand); color:#fff; font-weight:600; }
+  button.danger { color:var(--error); }
+  input { font:inherit; font-size:16px; width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:transparent; color:var(--ink); margin-bottom:8px; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 0; border-top:1px solid var(--line); flex-wrap:wrap; }
+  .row:first-child { border-top:0; }
+  .acts { display:flex; gap:6px; flex-wrap:wrap; }
+  .tag { font-size:13px; color:var(--error); margin-left:6px; }
+  .msg { min-height:20px; font-size:14px; color:var(--error); margin:4px 0; }
+  .empty { color:var(--muted); font-size:15px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Парикмахерская</h1>
+      <div class="who" id="who"></div>
+    </div>
+    <button id="out">Выйти</button>
+  </header>
+
+  <div class="card">
+    <h2>Расписание</h2>
+    <div class="empty">Здесь появится календарь записей.</div>
+  </div>
+
+  <div class="card" id="staff" hidden>
+    <h2>Сотрудники</h2>
+    <input id="nl" placeholder="Логин" autocapitalize="none" autocomplete="off" spellcheck="false">
+    <input id="np" placeholder="Пароль (от 6 символов)" autocomplete="off">
+    <button class="primary" id="add">Добавить сотрудника</button>
+    <div class="msg" id="msg" role="alert"></div>
+    <div id="list"></div>
+  </div>
+</div>
+
+<script>
+  function api(method, url, body) {
+    return fetch(url, {
+      method: method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function (r) {
+      if (r.status === 401) { location.reload(); throw new Error('auth'); }
+      return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || 'Ошибка'); return d; });
+    });
+  }
+  var msg = document.getElementById('msg');
+  function show(t) { msg.textContent = t || ''; }
+
+  document.getElementById('out').onclick = function () {
+    api('POST', '/api/logout').then(function () { location.reload(); });
+  };
+
+  api('GET', '/api/me').then(function (me) {
+    document.getElementById('who').textContent =
+      (me.role === 'admin' ? 'Администратор: ' : 'Вы вошли как ') + me.login;
+    if (me.role === 'admin') { document.getElementById('staff').hidden = false; loadList(); }
+  });
+
+  function loadList() {
+    api('GET', '/api/users').then(function (users) {
+      var box = document.getElementById('list');
+      box.textContent = '';
+      if (!users.length) {
+        var e = document.createElement('div');
+        e.className = 'empty';
+        e.textContent = 'Пока нет сотрудников. Добавьте первого выше.';
+        box.appendChild(e);
+        return;
+      }
+      users.forEach(function (u) {
+        var row = document.createElement('div'); row.className = 'row';
+        var name = document.createElement('div'); name.textContent = u.login;
+        if (u.blocked) { var t = document.createElement('span'); t.className = 'tag'; t.textContent = 'заблокирован'; name.appendChild(t); }
+        var acts = document.createElement('div'); acts.className = 'acts';
+        acts.appendChild(btn('Новый пароль', function () {
+          var p = prompt('Новый пароль для ' + u.login + ' (от 6 символов):');
+          if (p) api('PATCH', '/api/users/' + encodeURIComponent(u.login), { password: p }).then(function () { show(''); alert('Пароль изменён'); }).catch(function (e) { show(e.message); });
+        }));
+        acts.appendChild(btn(u.blocked ? 'Разблокировать' : 'Заблокировать', function () {
+          api('PATCH', '/api/users/' + encodeURIComponent(u.login), { blocked: !u.blocked }).then(loadList).catch(function (e) { show(e.message); });
+        }));
+        var del = btn('Удалить', function () {
+          if (confirm('Удалить аккаунт ' + u.login + '?')) api('DELETE', '/api/users/' + encodeURIComponent(u.login)).then(loadList).catch(function (e) { show(e.message); });
+        });
+        del.className = 'danger';
+        acts.appendChild(del);
+        row.appendChild(name); row.appendChild(acts); box.appendChild(row);
+      });
+    }).catch(function (e) { show(e.message); });
+  }
+  function btn(text, fn) { var b = document.createElement('button'); b.textContent = text; b.onclick = fn; return b; }
+
+  document.getElementById('add').onclick = function () {
+    var l = document.getElementById('nl'), p = document.getElementById('np');
+    api('POST', '/api/users', { login: l.value, password: p.value })
+      .then(function () { l.value = ''; p.value = ''; show(''); loadList(); })
+      .catch(function (e) { show(e.message); });
+  };
+</script>
+</body>
+</html>

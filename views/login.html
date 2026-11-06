@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Парикмахерская: вход</title>
+<style>
+  :root {
+    --bg-top: #efe6fb;
+    --bg-bottom: #fbe9f3;
+    --ink: #2b1d44;
+    --muted: #6f6590;
+    --brand: #6d2fc7;
+    --brand-dark: #5a22a8;
+    --field: #ffffff;
+    --line: #ded4f2;
+    --error: #c0264b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-top: #1d1530;
+      --bg-bottom: #2a1630;
+      --ink: #f3ecff;
+      --muted: #b4a8d6;
+      --brand: #8d52e6;
+      --brand-dark: #7a3fd4;
+      --field: #2b2145;
+      --line: #43376a;
+      --error: #ff7a98;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    background: linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+    padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+    display: flex; align-items: center; justify-content: center;
+  }
+  main { width: 100%; max-width: 380px; padding: 24px; text-align: center; }
+  svg.logo { width: 96px; height: 96px; color: var(--brand); }
+  h1 { font-size: 30px; margin: 12px 0 6px; letter-spacing: -0.01em; }
+  .sub { margin: 0 0 32px; color: var(--muted); font-size: 17px; line-height: 1.35; }
+  .field {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--field); border: 1px solid var(--line);
+    border-radius: 12px; padding: 0 14px; margin-bottom: 12px; height: 52px;
+  }
+  .field:focus-within { border-color: var(--brand); outline: 2px solid var(--brand); outline-offset: 1px; }
+  .field svg { width: 20px; height: 20px; flex: none; color: var(--muted); }
+  .field input {
+    flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink);
+    font: inherit; font-size: 16px; outline: none; height: 100%;
+  }
+  .field input::placeholder { color: var(--muted); }
+  .eye { border: 0; background: none; padding: 4px; cursor: pointer; color: var(--muted); display: flex; }
+  .eye:focus-visible { outline: 2px solid var(--brand); border-radius: 6px; }
+  .error { min-height: 22px; margin: 4px 0 10px; color: var(--error); font-size: 15px; }
+  button.go {
+    width: 100%; height: 52px; border: 0; border-radius: 12px; cursor: pointer;
+    background: var(--brand); color: #fff; font: inherit; font-size: 18px; font-weight: 600;
+  }
+  button.go:hover { background: var(--brand-dark); }
+  button.go:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+  button.go:disabled { opacity: .6; cursor: default; }
+</style>
+</head>
+<body>
+<main>
+  <svg class="logo" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <circle cx="16" cy="14" r="8"/>
+    <circle cx="48" cy="14" r="8"/>
+    <path d="M21 20 L46 56"/>
+    <path d="M43 20 L18 56"/>
+  </svg>
+  <h1>Парикмахерская</h1>
+  <p class="sub">Управляйте записями<br>легко и удобно</p>
+
+  <form id="f" novalidate>
+    <label class="field">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+      <input id="login" type="text" placeholder="Логин" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="Логин">
+    </label>
+    <label class="field">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+      <input id="password" type="password" placeholder="Введите пароль" autocomplete="current-password" aria-label="Пароль">
+      <button type="button" class="eye" id="eye" aria-label="Показать пароль">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle id="pupil" cx="12" cy="12" r="3"/></svg>
+      </button>
+    </label>
+    <div class="error" id="err" role="alert"></div>
+    <button class="go" id="go" type="submit">Войти</button>
+  </form>
+</main>
+
+<script>
+  var f = document.getElementById('f');
+  var loginEl = document.getElementById('login');
+  var pwEl = document.getElementById('password');
+  var errEl = document.getElementById('err');
+  var goEl = document.getElementById('go');
+  var eye = document.getElementById('eye');
+
+  eye.addEventListener('click', function () {
+    var show = pwEl.type === 'password';
+    pwEl.type = show ? 'text' : 'password';
+    eye.setAttribute('aria-label', show ? 'Скрыть пароль' : 'Показать пароль');
+  });
+
+  f.addEventListener('submit', function (e) {
+    e.preventDefault();
+    errEl.textContent = '';
+    if (!loginEl.value.trim() || !pwEl.value) {
+      errEl.textContent = 'Введите логин и пароль';
+      return;
+    }
+    goEl.disabled = true;
+    fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ login: loginEl.value, password: pwEl.value })
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (res.ok) { location.reload(); return; }
+        errEl.textContent = res.d.error || 'Не удалось войти';
+        goEl.disabled = false;
+        pwEl.select();
+      })
+      .catch(function () {
+        errEl.textContent = 'Нет связи с сервером. Проверьте интернет';
+        goEl.disabled = false;
+      });
+  });
+</script>
+</body>
+</html>

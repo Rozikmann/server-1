@@ -197,6 +197,90 @@ app.delete('/api/users/:login', needAuth, needAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- записи (общий календарь) ---------- */
+const APPTS_FILE = path.join(DATA_DIR, 'appointments.json');
+function loadAppts() {
+  try { return JSON.parse(fs.readFileSync(APPTS_FILE, 'utf8')); }
+  catch { return []; }
+}
+function saveAppts(list) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(APPTS_FILE, JSON.stringify(list, null, 2));
+}
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+function toMin(t) { const [h, m] = t.split(':'); return +h * 60 + +m; }
+
+// мастера: администратор и все незаблокированные сотрудники
+app.get('/api/masters', needAuth, (req, res) => {
+  const list = loadUsers().filter((u) => !u.blocked).map((u) => u.login);
+  res.json([admin.login, ...list]);
+});
+
+function readAppt(body, masters) {
+  const a = {
+    client: String(body.client || '').trim().slice(0, 80),
+    phone: String(body.phone || '').trim().slice(0, 30),
+    service: String(body.service || '').trim().slice(0, 80),
+    master: String(body.master || '').trim().toLowerCase(),
+    date: String(body.date || ''),
+    time: String(body.time || ''),
+    duration: parseInt(body.duration, 10),
+    note: String(body.note || '').trim().slice(0, 300),
+  };
+  if (!a.client) return { error: 'Введите имя клиента' };
+  if (!a.service) return { error: 'Введите услугу' };
+  if (!masters.includes(a.master)) return { error: 'Выберите мастера' };
+  if (!DATE_RE.test(a.date) || isNaN(Date.parse(a.date))) return { error: 'Неверная дата' };
+  if (!TIME_RE.test(a.time)) return { error: 'Неверное время' };
+  if (!(a.duration >= 5 && a.duration <= 600)) return { error: 'Длительность: от 5 до 600 минут' };
+  if (toMin(a.time) + a.duration > 24 * 60) return { error: 'Запись не должна уходить за полночь' };
+  return { a };
+}
+function hasOverlap(list, a, skipId) {
+  const s = toMin(a.time), e = s + a.duration;
+  return list.some((x) => x.id !== skipId && x.master === a.master && x.date === a.date &&
+    toMin(x.time) < e && s < toMin(x.time) + x.duration);
+}
+function allMasters() { return [admin.login, ...loadUsers().filter((u) => !u.blocked).map((u) => u.login)]; }
+
+app.get('/api/appointments', needAuth, (req, res) => {
+  const from = String(req.query.from || ''), to = String(req.query.to || '');
+  if (!DATE_RE.test(from) || !DATE_RE.test(to)) return res.status(400).json({ error: 'Нужны from и to (ГГГГ-ММ-ДД)' });
+  res.json(loadAppts().filter((x) => x.date >= from && x.date <= to));
+});
+
+app.post('/api/appointments', needAuth, (req, res) => {
+  const r = readAppt(req.body, allMasters());
+  if (r.error) return res.status(400).json({ error: r.error });
+  const list = loadAppts();
+  if (hasOverlap(list, r.a, null)) return res.status(409).json({ error: 'У этого мастера уже есть запись на это время' });
+  const item = { id: crypto.randomBytes(6).toString('hex'), ...r.a, createdBy: req.session.login };
+  list.push(item);
+  saveAppts(list);
+  res.json(item);
+});
+
+app.put('/api/appointments/:id', needAuth, (req, res) => {
+  const list = loadAppts();
+  const i = list.findIndex((x) => x.id === req.params.id);
+  if (i < 0) return res.status(404).json({ error: 'Запись не найдена' });
+  const r = readAppt(req.body, allMasters());
+  if (r.error) return res.status(400).json({ error: r.error });
+  if (hasOverlap(list, r.a, req.params.id)) return res.status(409).json({ error: 'У этого мастера уже есть запись на это время' });
+  list[i] = { ...list[i], ...r.a };
+  saveAppts(list);
+  res.json(list[i]);
+});
+
+app.delete('/api/appointments/:id', needAuth, (req, res) => {
+  const list = loadAppts();
+  const next = list.filter((x) => x.id !== req.params.id);
+  if (next.length === list.length) return res.status(404).json({ error: 'Запись не найдена' });
+  saveAppts(next);
+  res.json({ ok: true });
+});
+
 /* ---------- страницы ---------- */
 app.get('/', (req, res) => {
   const file = getSession(req) ? 'app.html' : 'login.html';

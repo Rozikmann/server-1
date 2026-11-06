@@ -5,21 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Парикмахерская</title>
 <style>
-  :root { --bg:#f6f1fd; --card:#fff; --ink:#2b1d44; --muted:#6f6590; --brand:#6d2fc7; --line:#e3daf3; --error:#c0264b; }
+  :root { --bg-top:#efe6fb; --bg-bottom:#fbe9f3; --card:#fff; --ink:#2b1d44; --muted:#6f6590; --brand:#6d2fc7; --line:#e3daf3; --error:#c0264b; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#1a1328; --card:#261d3d; --ink:#f3ecff; --muted:#b4a8d6; --brand:#8d52e6; --line:#43376a; --error:#ff7a98; }
+    :root { --bg-top:#1d1530; --bg-bottom:#2a1630; --card:#261d3d; --ink:#f3ecff; --muted:#b4a8d6; --brand:#8d52e6; --line:#43376a; --error:#ff7a98; }
   }
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
-    padding: env(safe-area-inset-top,0px) 16px env(safe-area-inset-bottom,0px); }
-  .wrap { max-width: 520px; margin: 0 auto; padding: 16px 0 32px; }
-  header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+  [hidden] { display: none !important; }
+  html { min-height: 100%; }
+  body { margin:0; min-height:100vh; color:var(--ink);
+    background: linear-gradient(180deg, var(--bg-top), var(--bg-bottom)) fixed;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    padding: env(safe-area-inset-top,0px) 16px 0; }
+  .wrap { max-width: 520px; margin: 0 auto; padding: 16px 0 100px; }
+  header { margin-bottom: 16px; }
   h1 { font-size:22px; margin:0; }
   h2 { font-size:18px; margin:0 0 12px; }
-  .who { color:var(--muted); font-size:14px; }
+  .who { color:var(--muted); font-size:14px; margin-top:2px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:16px; }
   button { font:inherit; cursor:pointer; border-radius:10px; border:1px solid var(--line); background:transparent; color:var(--ink); padding:8px 12px; }
-  button.primary { background:var(--brand); border-color:var(--brand); color:#fff; font-weight:600; }
+  button.primary { background:var(--brand); border-color:var(--brand); color:#fff; font-weight:600; width:100%; padding:12px; }
   button.danger { color:var(--error); }
   input { font:inherit; font-size:16px; width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:transparent; color:var(--ink); margin-bottom:8px; }
   .row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 0; border-top:1px solid var(--line); flex-wrap:wrap; }
@@ -28,58 +32,153 @@
   .tag { font-size:13px; color:var(--error); margin-left:6px; }
   .msg { min-height:20px; font-size:14px; color:var(--error); margin:4px 0; }
   .empty { color:var(--muted); font-size:15px; }
+
+  nav { position:fixed; left:0; right:0; bottom:0; background:var(--card); border-top:1px solid var(--line);
+    padding-bottom: env(safe-area-inset-bottom,0px); }
+  nav .in { max-width:520px; margin:0 auto; display:flex; }
+  nav button { flex:1; border:0; border-radius:0; background:none; padding:8px 2px 6px; color:var(--muted);
+    display:flex; flex-direction:column; align-items:center; gap:2px; font-size:11px; }
+  nav button svg { width:24px; height:24px; }
+  nav button.on { color:var(--brand); font-weight:600; }
+  nav button:focus-visible { outline:2px solid var(--brand); outline-offset:-2px; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <div>
-      <h1>Парикмахерская</h1>
-      <div class="who" id="who"></div>
-    </div>
-    <button id="out">Выйти</button>
+    <h1>Парикмахерская</h1>
+    <div class="who" id="who"></div>
   </header>
 
-  <div class="card">
-    <h2>Расписание</h2>
-    <div class="empty">Здесь появится календарь записей.</div>
-  </div>
+  <section id="tab-schedule">
+    <div class="card">
+      <h2>Расписание</h2>
+      <div class="empty">Здесь появится календарь записей.</div>
+    </div>
+  </section>
 
-  <div class="card" id="staff" hidden>
-    <h2>Сотрудники</h2>
-    <input id="nl" placeholder="Логин" autocapitalize="none" autocomplete="off" spellcheck="false">
-    <input id="np" placeholder="Пароль (от 6 символов)" autocomplete="off">
-    <button class="primary" id="add">Добавить сотрудника</button>
-    <div class="msg" id="msg" role="alert"></div>
-    <div id="list"></div>
-  </div>
+  <section id="tab-clients" hidden>
+    <div class="card">
+      <h2>Клиенты</h2>
+      <div class="empty">Здесь появится список клиентов.</div>
+    </div>
+  </section>
+
+  <section id="tab-staff" hidden>
+    <div class="card">
+      <h2>Добавить сотрудника</h2>
+      <input id="nl" placeholder="Логин" autocapitalize="none" autocomplete="off" spellcheck="false">
+      <input id="np" placeholder="Пароль (от 6 символов)" autocomplete="off">
+      <button class="primary" id="add">Добавить сотрудника</button>
+      <div class="msg" id="msg" role="alert"></div>
+    </div>
+    <div class="card">
+      <h2>Сотрудники</h2>
+      <div id="list"></div>
+    </div>
+  </section>
+
+  <section id="tab-stats" hidden>
+    <div class="card">
+      <h2>Статистика</h2>
+      <div class="empty">Здесь появится выручка и число записей.</div>
+    </div>
+  </section>
+
+  <section id="tab-settings" hidden>
+    <div class="card">
+      <h2>Настройки</h2>
+      <button class="danger" id="out">Выйти</button>
+    </div>
+  </section>
 </div>
 
+<nav>
+  <div class="in">
+    <button data-tab="schedule" class="on">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+      Расписание
+    </button>
+    <button data-tab="clients">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+      Клиенты
+    </button>
+    <button data-tab="staff" id="navstaff" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17 14c2.8.2 5 2.4 5 5.5"/></svg>
+      Сотрудники
+    </button>
+    <button data-tab="stats" id="navstats" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V12M12 21V4M19 21v-6"/></svg>
+      Статистика
+    </button>
+    <button data-tab="settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>
+      Настройки
+    </button>
+  </div>
+</nav>
+
 <script>
+  var isAdmin = false;
+
   function api(method, url, body) {
     return fetch(url, {
       method: method,
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined
     }).then(function (r) {
       if (r.status === 401) { location.reload(); throw new Error('auth'); }
-      return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || 'Ошибка'); return d; });
+      return r.json().then(function (d) {
+        if (r.status === 403 && isAdmin) {
+          // сессия в этом браузере уже другая (например, зашли сотрудником в соседней вкладке)
+          alert('Вы вошли под другим аккаунтом. Страница обновится.');
+          location.reload();
+          throw new Error('role');
+        }
+        if (!r.ok) throw new Error(d.error || 'Ошибка');
+        return d;
+      });
     });
   }
+
   var msg = document.getElementById('msg');
   function show(t) { msg.textContent = t || ''; }
+
+  /* ---------- вкладки ---------- */
+  function showTab(name) {
+    ['schedule', 'clients', 'staff', 'stats', 'settings'].forEach(function (t) {
+      document.getElementById('tab-' + t).hidden = (t !== name);
+    });
+    var bs = document.querySelectorAll('nav button');
+    for (var i = 0; i < bs.length; i++) bs[i].classList.toggle('on', bs[i].getAttribute('data-tab') === name);
+    try { sessionStorage.setItem('tab', name); } catch (e) {}
+    if (name === 'staff') loadList();
+  }
+  var bs = document.querySelectorAll('nav button');
+  for (var i = 0; i < bs.length; i++) {
+    bs[i].onclick = function () { showTab(this.getAttribute('data-tab')); };
+  }
 
   document.getElementById('out').onclick = function () {
     api('POST', '/api/logout').then(function () { location.reload(); });
   };
 
   api('GET', '/api/me').then(function (me) {
+    isAdmin = me.role === 'admin';
     document.getElementById('who').textContent =
-      (me.role === 'admin' ? 'Администратор: ' : 'Вы вошли как ') + me.login;
-    if (me.role === 'admin') { document.getElementById('staff').hidden = false; loadList(); }
+      (isAdmin ? 'Администратор: ' : 'Вы вошли как ') + me.login;
+    document.getElementById('navstaff').hidden = !isAdmin;
+    document.getElementById('navstats').hidden = !isAdmin;
+    var last = 'schedule';
+    try { last = sessionStorage.getItem('tab') || 'schedule'; } catch (e) {}
+    if ((last === 'staff' || last === 'stats') && !isAdmin) last = 'schedule';
+    showTab(last);
   });
 
+  /* ---------- сотрудники ---------- */
   function loadList() {
+    if (!isAdmin) return;
     api('GET', '/api/users').then(function (users) {
       var box = document.getElementById('list');
       box.textContent = '';
